@@ -43,8 +43,20 @@ class TeacherExamSessionController extends Controller
 
         $examSession->load(['participants.student']);
 
+        $activityLogs = $examSession->activityLogs()
+            ->latest('occurred_at')
+            ->limit(100)
+            ->get();
+
+        $lastSeenByDevice = $activityLogs
+            ->whereNotNull('device_id')
+            ->groupBy('device_id')
+            ->map(fn ($logs) => $logs->sortByDesc('occurred_at')->first());
+
         return view('teacher.exam-session-show', [
             'session' => $examSession,
+            'activityLogs' => $activityLogs,
+            'lastSeenByDevice' => $lastSeenByDevice,
         ]);
     }
 
@@ -84,6 +96,73 @@ class TeacherExamSessionController extends Controller
         }
 
         return back()->with('status', 'PIN keluar berhasil dibuat.');
+    }
+
+    public function activityLogs(Request $request, ExamSession $examSession)
+    {
+        $this->authorizeTeacher($request, $examSession);
+
+        return response()->json($this->activityPayload($examSession));
+    }
+
+    public function activityStream(Request $request, ExamSession $examSession)
+    {
+        $this->authorizeTeacher($request, $examSession);
+
+        return response()->stream(function () use ($examSession) {
+            $lastActivityId = null;
+            $startedAt = time();
+
+            while (! connection_aborted() && time() - $startedAt < 120) {
+                $latestActivityId = $examSession->activityLogs()->max('id');
+
+                if ($latestActivityId !== $lastActivityId) {
+                    $lastActivityId = $latestActivityId;
+                    echo "event: activity\n";
+                    echo 'data: '.json_encode($this->activityPayload($examSession))."\n\n";
+                    ob_flush();
+                    flush();
+                }
+
+                sleep(1);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    private function activityPayload(ExamSession $examSession): array
+    {
+        $activityLogs = $examSession->activityLogs()
+            ->latest('occurred_at')
+            ->limit(100)
+            ->get();
+
+        $lastSeenByDevice = $activityLogs
+            ->whereNotNull('device_id')
+            ->groupBy('device_id')
+            ->map(fn ($logs) => $logs->sortByDesc('occurred_at')->first())
+            ->values();
+
+        return [
+            'devices' => $lastSeenByDevice->map(fn ($activity) => [
+                'student_username' => $activity->student_username,
+                'device_label' => $activity->device_name ?: $activity->device_id,
+                'occurred_at' => $activity->occurred_at?->format('d-m-Y H:i:s'),
+                'relative_time' => $activity->occurred_at?->diffForHumans(),
+                'is_online' => ($activity->occurred_at?->diffInSeconds(now()) ?? 999999) <= 90,
+            ])->values(),
+            'logs' => $activityLogs->map(fn ($activity) => [
+                'occurred_at' => $activity->occurred_at?->format('d-m-Y H:i:s'),
+                'relative_time' => $activity->occurred_at?->diffForHumans(),
+                'student_username' => $activity->student_username,
+                'device_label' => $activity->device_name ?: $activity->device_id,
+                'event_type' => $activity->event_type,
+                'message' => $activity->message,
+            ])->values(),
+        ];
     }
 
     private function authorizeTeacher(Request $request, ExamSession $examSession): void

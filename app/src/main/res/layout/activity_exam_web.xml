@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/examWebMain"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#fff7ed"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/exitExamButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#9a3412"
+        android:gravity="center"
+        android:text="Keluar Ujian"
+        android:textColor="#ffffff"
+        android:textStyle="bold" />
+
+    <WebView
+        android:id="@+id/examWebView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+</LinearLayout>

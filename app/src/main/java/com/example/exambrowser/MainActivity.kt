@@ -1,6 +1,9 @@
 package com.example.exambrowser
 
 import android.os.Bundle
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -8,6 +11,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import android.widget.EditText
 import android.widget.TextView
@@ -24,18 +28,40 @@ import com.google.android.material.textfield.TextInputLayout
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val BASE_URL = "http://10.46.96.185:8002"
         private const val EXAM_URL = "http://elsph.permataharapanku.sch.id"
+        private const val PREFS_NAME = "exam_browser_state"
+        private const val KEY_ACTIVE_SESSION_ID = "active_session_id"
+        private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_STUDENT_NAME = "student_name"
     }
 
     private var activeSessionId: Long? = null
     private var examWebView: WebView? = null
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            activeSessionId?.let { sessionId ->
+                Thread {
+                    postSessionEvent(
+                        sessionId = sessionId,
+                        endpoint = "heartbeat",
+                        eventType = "heartbeat",
+                        message = "Aplikasi siswa masih aktif."
+                    )
+                }.start()
+                heartbeatHandler.postDelayed(this, 30_000)
+            }
+        }
+    }
     private val backPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
             if (examWebView != null) {
+                reportStudentAction("back_pressed", "Siswa menekan tombol Back saat ujian berlangsung.")
                 showExitPinDialog()
             } else {
                 isEnabled = false
@@ -49,7 +75,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         onBackPressedDispatcher.addCallback(this, backPressedCallback)
-        showPinInput()
+
+        val savedSessionId = getPrefs().getLong(KEY_ACTIVE_SESSION_ID, -1L).takeIf { it > 0 }
+        if (savedSessionId != null) {
+            activeSessionId = savedSessionId
+            Thread {
+                postSessionEvent(
+                    sessionId = savedSessionId,
+                    endpoint = "activity",
+                    eventType = "app_reopened",
+                    message = "Siswa membuka aplikasi lagi setelah HP restart atau aplikasi ditutup paksa saat sesi masih aktif."
+                )
+            }.start()
+            showExamWebsite()
+        } else {
+            showPinInput()
+        }
     }
 
     private fun showPinInput() {
@@ -83,6 +124,7 @@ class MainActivity : AppCompatActivity() {
                             Snackbar.LENGTH_SHORT
                         ).show()
                         activeSessionId = result.sessionId
+                        result.sessionId?.let { saveActiveSession(it) }
                         pinButton.postDelayed({ showExamWebsite() }, 700)
                     } else {
                         pinLayout.error = result.message
@@ -104,7 +146,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             connection.outputStream.use { output ->
-                output.write(JSONObject().put("pin", pin).toString().toByteArray())
+                output.write(
+                    JSONObject()
+                        .put("pin", pin)
+                        .put("device_id", getStoredDeviceId())
+                        .put("device_name", getDeviceName())
+                        .toString()
+                        .toByteArray()
+                )
             }
 
             val responseCode = connection.responseCode
@@ -174,15 +223,33 @@ class MainActivity : AppCompatActivity() {
                         true
                     }
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    activeSessionId?.let { sessionId ->
+                        Thread {
+                            postSessionEvent(
+                                sessionId = sessionId,
+                                endpoint = "activity",
+                                eventType = "elearning_page_loaded",
+                                message = "Halaman e-learning terbuka: ${url.orEmpty()}"
+                            )
+                        }.start()
+                    }
+                    injectStudentIdentityDetector()
+                }
             }
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            addJavascriptInterface(StudentIdentityBridge(), "ExamBrowserBridge")
             loadUrl(EXAM_URL)
         }
 
         enterExamLockMode()
+        startHeartbeat()
 
         findViewById<TextView>(R.id.exitExamButton).setOnClickListener {
+            reportStudentAction("exit_button_pressed", "Siswa menekan tombol keluar ujian di aplikasi.")
             Snackbar.make(
                 findViewById(R.id.examWebMain),
                 "Membuka PIN keluar...",
@@ -194,6 +261,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK && examWebView != null) {
+            reportStudentAction("back_pressed", "Siswa menekan tombol Back saat ujian berlangsung.")
             showExitPinDialog()
             return true
         }
@@ -252,6 +320,8 @@ class MainActivity : AppCompatActivity() {
 
                         dialog.dismiss()
                         exitExamLockMode()
+                        clearActiveSession()
+                        stopHeartbeat()
                         examWebView?.destroy()
                         examWebView = null
                         activeSessionId = null
@@ -262,6 +332,262 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.show()
+    }
+
+    private fun getPrefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
+    private fun getStoredDeviceId(): String {
+        val prefs = getPrefs()
+        val existing = prefs.getString(KEY_DEVICE_ID, null)
+        if (!existing.isNullOrBlank()) {
+            return existing
+        }
+
+        val generated = UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_DEVICE_ID, generated).apply()
+        return generated
+    }
+
+    private fun getDeviceName(): String {
+        return listOf(Build.MANUFACTURER, Build.MODEL)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+    }
+
+    private fun getSavedStudentName(): String {
+        return getPrefs().getString(KEY_STUDENT_NAME, null).orEmpty()
+    }
+
+    private fun saveActiveSession(sessionId: Long) {
+        getPrefs().edit()
+            .putLong(KEY_ACTIVE_SESSION_ID, sessionId)
+            .apply()
+    }
+
+    private fun saveDetectedStudentName(studentName: String) {
+        getPrefs().edit()
+            .putString(KEY_STUDENT_NAME, studentName)
+            .apply()
+    }
+
+    private fun injectStudentIdentityDetector() {
+        examWebView?.evaluateJavascript(
+            """
+            (function () {
+                if (window.__examBrowserIdentityDetectorInstalled) return;
+                window.__examBrowserIdentityDetectorInstalled = true;
+                window.__examBrowserLastIdentity = '';
+
+                function clean(value) {
+                    return String(value || '')
+                        .replace(/\s+/g, ' ')
+                        .replace(/^(nama lengkap|nama siswa|nama|name|siswa|student|user|username|akun|profil|profile|login sebagai|masuk sebagai)\s*[:\-]\s*/i, '')
+                        .trim();
+                }
+
+                function isLikelyName(value) {
+                    var text = clean(value);
+                    if (text.length < 3 || text.length > 80) return false;
+                    if (/[{}<>=]/.test(text)) return false;
+                    if (/\b(login|logout|keluar|masuk|dashboard|ujian|exam|home|menu|profil|profile|password|kelas|mapel|nilai|absensi|materi|tugas)\b/i.test(text)) return false;
+                    return /[A-Za-z]/.test(text);
+                }
+
+                function pickFromText(text) {
+                    var normalized = String(text || '').replace(/\s+/g, ' ').trim();
+                    var patterns = [
+                        /(?:nama lengkap|nama siswa|nama|login sebagai|masuk sebagai)\s*[:\-]\s*([A-Za-zÀ-ÿ.'` ]{3,80})/i,
+                        /(?:username|user)\s*[:\-]\s*([A-Za-z0-9_.\- ]{3,80})/i
+                    ];
+
+                    for (var i = 0; i < patterns.length; i++) {
+                        var match = normalized.match(patterns[i]);
+                        if (match && isLikelyName(match[1])) return clean(match[1]);
+                    }
+
+                    return '';
+                }
+
+                function collectCandidate(node) {
+                    if (!node) return '';
+
+                    var attrs = [
+                        'data-user-name',
+                        'data-username',
+                        'data-name',
+                        'data-nama',
+                        'aria-label',
+                        'title',
+                        'alt'
+                    ];
+
+                    for (var i = 0; i < attrs.length; i++) {
+                        var attrValue = node.getAttribute && node.getAttribute(attrs[i]);
+                        if (isLikelyName(attrValue)) return clean(attrValue);
+                    }
+
+                    var text = node.innerText || node.textContent || '';
+                    var fromPattern = pickFromText(text);
+                    if (fromPattern) return fromPattern;
+
+                    var direct = clean(text);
+                    if (isLikelyName(direct)) return direct;
+
+                    return '';
+                }
+
+                function findName() {
+                    var selectors = [
+                        '[data-user-name]',
+                        '[data-username]',
+                        '[data-name]',
+                        '[data-nama]',
+                        '[class*="user"]',
+                        '[id*="user"]',
+                        '[class*="siswa"]',
+                        '[id*="siswa"]',
+                        '[class*="nama"]',
+                        '[id*="nama"]',
+                        '[class*="name"]',
+                        '[id*="name"]',
+                        '[class*="profile"]',
+                        '[id*="profile"]',
+                        '[class*="akun"]',
+                        '[id*="akun"]',
+                        '.dropdown-toggle',
+                        '.dropdown-menu',
+                        '.nav-link',
+                        '.user-panel',
+                        '.user-info',
+                        '.profile-info',
+                        '.navbar',
+                        '.topbar',
+                        '.header',
+                        'header'
+                    ];
+
+                    for (var i = 0; i < selectors.length; i++) {
+                        var nodes = document.querySelectorAll(selectors[i]);
+                        for (var j = 0; j < nodes.length; j++) {
+                            var value = collectCandidate(nodes[j]);
+                            if (value) return value;
+                        }
+                    }
+
+                    var bodyPattern = pickFromText(document.body && document.body.innerText);
+                    if (bodyPattern) return bodyPattern;
+
+                    return '';
+                }
+
+                function report() {
+                    var name = findName();
+                    if (name && name !== window.__examBrowserLastIdentity && window.ExamBrowserBridge) {
+                        window.__examBrowserLastIdentity = name;
+                        window.ExamBrowserBridge.onStudentNameDetected(name);
+                    }
+                }
+
+                report();
+                setTimeout(report, 1000);
+                setTimeout(report, 3000);
+                setTimeout(report, 7000);
+                setInterval(report, 5000);
+
+                if (window.MutationObserver && document.body) {
+                    var observer = new MutationObserver(function () {
+                        clearTimeout(window.__examBrowserIdentityTimer);
+                        window.__examBrowserIdentityTimer = setTimeout(report, 500);
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
+    inner class StudentIdentityBridge {
+        @JavascriptInterface
+        fun onStudentNameDetected(rawName: String?) {
+            val studentName = rawName
+                ?.replace(Regex("\\s+"), " ")
+                ?.trim()
+                ?.takeIf { it.length in 3..80 }
+                ?: return
+
+            if (studentName == getSavedStudentName()) {
+                return
+            }
+
+            saveDetectedStudentName(studentName)
+            activeSessionId?.let { sessionId ->
+                Thread {
+                    postSessionEvent(
+                        sessionId = sessionId,
+                        endpoint = "activity",
+                        eventType = "student_identified",
+                        message = "Identitas siswa terbaca dari halaman e-learning."
+                    )
+                }.start()
+            }
+        }
+    }
+
+    private fun clearActiveSession() {
+        getPrefs().edit()
+            .remove(KEY_ACTIVE_SESSION_ID)
+            .remove(KEY_STUDENT_NAME)
+            .apply()
+    }
+
+    private fun startHeartbeat() {
+        heartbeatHandler.removeCallbacks(heartbeatRunnable)
+        heartbeatHandler.post(heartbeatRunnable)
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatHandler.removeCallbacks(heartbeatRunnable)
+    }
+
+    private fun postSessionEvent(sessionId: Long, endpoint: String, eventType: String, message: String) {
+        runCatching {
+            val connection = (URL("$BASE_URL/api/student/exam-sessions/$sessionId/$endpoint").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 10_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val body = JSONObject()
+                .put("event_type", eventType)
+                .put("message", message)
+                .put("student_username", getSavedStudentName())
+                .put("device_id", getStoredDeviceId())
+                .put("device_name", getDeviceName())
+
+            connection.outputStream.use { output ->
+                output.write(body.toString().toByteArray())
+            }
+
+            connection.inputStream?.close()
+            connection.disconnect()
+        }
+    }
+
+    private fun reportStudentAction(eventType: String, message: String) {
+        activeSessionId?.let { sessionId ->
+            Thread {
+                postSessionEvent(
+                    sessionId = sessionId,
+                    endpoint = "activity",
+                    eventType = eventType,
+                    message = message
+                )
+            }.start()
+        }
     }
 
     private fun applySystemBarsPadding(rootId: Int) {
@@ -305,7 +631,15 @@ class MainActivity : AppCompatActivity() {
             }
 
             connection.outputStream.use { output ->
-                output.write(JSONObject().put("pin", pin).toString().toByteArray())
+                output.write(
+                    JSONObject()
+                        .put("pin", pin)
+                        .put("student_username", getSavedStudentName())
+                        .put("device_id", getStoredDeviceId())
+                        .put("device_name", getDeviceName())
+                        .toString()
+                        .toByteArray()
+                )
             }
 
             val responseCode = connection.responseCode
@@ -340,6 +674,28 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (examWebView != null) {
             enterExamLockMode()
+            startHeartbeat()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        activeSessionId?.let { sessionId ->
+            Thread {
+                postSessionEvent(
+                    sessionId = sessionId,
+                    endpoint = "activity",
+                    eventType = "app_backgrounded",
+                    message = "Aplikasi keluar dari layar utama atau proses ujian terganggu."
+                )
+            }.start()
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (examWebView != null) {
+            reportStudentAction("home_pressed", "Siswa menekan tombol Home/Recent atau mencoba meninggalkan aplikasi.")
         }
     }
 }

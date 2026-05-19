@@ -23,6 +23,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/teacher/dashboard', [TeacherExamSessionController::class, 'index'])->name('teacher.dashboard');
     Route::post('/teacher/exam-sessions', [TeacherExamSessionController::class, 'store'])->name('teacher.exam-sessions.store');
     Route::get('/teacher/exam-sessions/{examSession}', [TeacherExamSessionController::class, 'show'])->name('teacher.exam-sessions.show');
+    Route::get('/teacher/exam-sessions/{examSession}/activity-logs', [TeacherExamSessionController::class, 'activityLogs'])->name('teacher.exam-sessions.activity-logs');
+    Route::get('/teacher/exam-sessions/{examSession}/activity-stream', [TeacherExamSessionController::class, 'activityStream'])->name('teacher.exam-sessions.activity-stream');
     Route::post('/teacher/exam-sessions/{examSession}/entry-pin', [TeacherExamSessionController::class, 'generateEntryPin'])->name('teacher.exam-sessions.entry-pin');
     Route::post('/teacher/exam-sessions/{examSession}/exit-pin', [TeacherExamSessionController::class, 'generateExitPin'])->name('teacher.exam-sessions.exit-pin');
 });

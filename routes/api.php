@@ -14,3 +14,4 @@ Route::post('/student/exam-sessions/join', [StudentExamSessionController::class,
 Route::post('/student/exam-sessions/{examSession}/heartbeat', [StudentExamSessionController::class, 'heartbeat']);
 Route::post('/student/exam-sessions/{examSession}/exit', [StudentExamSessionController::class, 'exit']);
 Route::post('/student/exam-sessions/{examSession}/interrupt', [StudentExamSessionController::class, 'markInterrupted']);
+Route::post('/student/exam-sessions/{examSession}/activity', [StudentExamSessionController::class, 'activity']);

@@ -18,6 +18,11 @@
         .pin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .pin-card { border: 1px solid #fed7aa; border-radius: 8px; padding: 18px; }
         .pin-value { font-size: 30px; font-weight: 700; margin: 8px 0 14px; }
+        .status-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
+        .status-online { background: #dcfce7; color: #166534; }
+        .status-offline { background: #fee2e2; color: #991b1b; }
+        .log-type { font-weight: 700; color: #9a3412; }
+        .log-message { color: #7c2d12; font-size: 14px; margin-top: 3px; }
         button, a.button {
             display: inline-block;
             border: 0;
@@ -101,8 +106,232 @@
         </div>
     </section>
 
+    <section>
+        <h2>Status Perangkat Siswa</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Perangkat</th>
+                    <th>Aktivitas Terakhir</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="device-status-body">
+                @forelse ($lastSeenByDevice as $activity)
+                    @php
+                        $secondsSinceSeen = $activity->occurred_at?->diffInSeconds(now()) ?? 999999;
+                        $isOnline = $secondsSinceSeen <= 90;
+                    @endphp
+                    <tr>
+                        <td>
+                            <strong>{{ $activity->student_username ?: 'Siswa belum login' }}</strong>
+                            <div class="muted">{{ $activity->device_name ?: $activity->device_id ?: '-' }}</div>
+                        </td>
+                        <td>
+                            {{ $activity->occurred_at?->format('d-m-Y H:i:s') }}
+                            <div class="muted">{{ $activity->occurred_at?->diffForHumans() }}</div>
+                        </td>
+                        <td>
+                            <span class="status-pill {{ $isOnline ? 'status-online' : 'status-offline' }}">
+                                {{ $isOnline ? 'Online' : 'Tidak terdeteksi / kemungkinan restart' }}
+                            </span>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="3" class="muted">Belum ada aktivitas dari aplikasi siswa.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Riwayat Aktivitas Siswa</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>Siswa / Perangkat</th>
+                    <th>Aktivitas</th>
+                </tr>
+            </thead>
+            <tbody id="activity-log-body">
+                @forelse ($activityLogs as $activity)
+                    @php
+                        $labels = [
+                            'joined' => 'Masuk ujian',
+                            'heartbeat' => 'Masih aktif',
+                            'app_reopened' => 'Restart / dibuka ulang',
+                            'app_backgrounded' => 'Aplikasi keluar layar',
+                            'app_closed' => 'Aplikasi ditutup',
+                            'interrupted' => 'Percobaan keluar paksa',
+                            'student_identified' => 'Identitas e-learning terbaca',
+                            'elearning_page_loaded' => 'Halaman e-learning terbuka',
+                            'back_pressed' => 'Tombol Back ditekan',
+                            'home_pressed' => 'Tombol Home / Recent ditekan',
+                            'exit_button_pressed' => 'Tombol keluar ujian ditekan',
+                            'exit_pin_failed' => 'PIN keluar salah',
+                            'exited' => 'Keluar resmi',
+                        ];
+                    @endphp
+                    <tr>
+                        <td>
+                            {{ $activity->occurred_at?->format('d-m-Y H:i:s') }}
+                            <div class="muted">{{ $activity->occurred_at?->diffForHumans() }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ $activity->student_username ?: 'Siswa belum login' }}</strong>
+                            <div class="muted">{{ $activity->device_name ?: $activity->device_id ?: '-' }}</div>
+                        </td>
+                        <td>
+                            <div class="log-type">{{ $labels[$activity->event_type] ?? $activity->event_type }}</div>
+                            @if ($activity->message)
+                                <div class="log-message">{{ $activity->message }}</div>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="3" class="muted">Belum ada riwayat aktivitas.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </section>
+
 </main>
 <script>
+    const activityLogsUrl = @json(route('teacher.exam-sessions.activity-logs', $session));
+    const activityStreamUrl = @json(route('teacher.exam-sessions.activity-stream', $session));
+    const activityLabels = {
+        joined: 'Masuk ujian',
+        heartbeat: 'Masih aktif',
+        app_reopened: 'Restart / dibuka ulang',
+        app_backgrounded: 'Aplikasi keluar layar',
+        app_closed: 'Aplikasi ditutup',
+        interrupted: 'Percobaan keluar paksa',
+        student_identified: 'Identitas e-learning terbaca',
+        elearning_page_loaded: 'Halaman e-learning terbuka',
+        back_pressed: 'Tombol Back ditekan',
+        home_pressed: 'Tombol Home / Recent ditekan',
+        exit_button_pressed: 'Tombol keluar ujian ditekan',
+        exit_pin_failed: 'PIN keluar salah',
+        exited: 'Keluar resmi',
+    };
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    function renderDeviceStatus(devices) {
+        const body = document.getElementById('device-status-body');
+
+        if (! devices.length) {
+            body.innerHTML = '<tr><td colspan="3" class="muted">Belum ada aktivitas dari aplikasi siswa.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = devices.map((device) => {
+            const statusClass = device.is_online ? 'status-online' : 'status-offline';
+            const statusText = device.is_online ? 'Online' : 'Tidak terdeteksi / kemungkinan restart';
+
+            return `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(device.student_username || 'Siswa belum login')}</strong>
+                        <div class="muted">${escapeHtml(device.device_label || '-')}</div>
+                    </td>
+                    <td>
+                        ${escapeHtml(device.occurred_at || '-')}
+                        <div class="muted">${escapeHtml(device.relative_time || '')}</div>
+                    </td>
+                    <td>
+                        <span class="status-pill ${statusClass}">${statusText}</span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderActivityLogs(logs) {
+        const body = document.getElementById('activity-log-body');
+
+        if (! logs.length) {
+            body.innerHTML = '<tr><td colspan="3" class="muted">Belum ada riwayat aktivitas.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = logs.map((log) => {
+            const label = activityLabels[log.event_type] || log.event_type;
+            const message = log.message
+                ? `<div class="log-message">${escapeHtml(log.message)}</div>`
+                : '';
+
+            return `
+                <tr>
+                    <td>
+                        ${escapeHtml(log.occurred_at || '-')}
+                        <div class="muted">${escapeHtml(log.relative_time || '')}</div>
+                    </td>
+                    <td>
+                        <strong>${escapeHtml(log.student_username || 'Siswa belum login')}</strong>
+                        <div class="muted">${escapeHtml(log.device_label || '-')}</div>
+                    </td>
+                    <td>
+                        <div class="log-type">${escapeHtml(label)}</div>
+                        ${message}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function refreshActivityLogs() {
+        try {
+            const response = await fetch(activityLogsUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            if (! response.ok) {
+                return;
+            }
+
+            const data = await response.json();
+            renderDeviceStatus(data.devices || []);
+            renderActivityLogs(data.logs || []);
+        } catch (error) {
+            // Keep the current table visible if the network drops briefly.
+        }
+    }
+
+    function connectActivityStream() {
+        if (! window.EventSource) {
+            refreshActivityLogs();
+            return;
+        }
+
+        const source = new EventSource(activityStreamUrl);
+
+        source.addEventListener('activity', (event) => {
+            const data = JSON.parse(event.data);
+            renderDeviceStatus(data.devices || []);
+            renderActivityLogs(data.logs || []);
+        });
+
+        source.onerror = () => {
+            source.close();
+            setTimeout(connectActivityStream, 3000);
+        };
+    }
+
+    refreshActivityLogs();
+    connectActivityStream();
+
     document.querySelectorAll('[data-pin-form]').forEach((form) => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
