@@ -2,7 +2,8 @@
     <string name="app_name">ExamBrowser</string>
     <string name="student_badge">Siswa</string>
     <string name="pin_title">PIN Ujian</string>
-    <string name="pin_subtitle">Masukkan PIN sesi ujian untuk membuka e-learning.</string>
+    <string name="pin_subtitle">Masukkan nama dan PIN sesi ujian untuk membuka e-learning.</string>
+    <string name="student_name_hint">Nama siswa</string>
     <string name="pin_hint">Masukkan PIN</string>
     <string name="pin_button">Lanjut Ujian</string>
 </resources>

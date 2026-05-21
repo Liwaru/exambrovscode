@@ -20,7 +20,7 @@ class StudentExamSessionFlowTest extends TestCase
         ExamSession::create([
             'teacher_id' => $teacher->getKey(),
             'title' => 'Matematika',
-            'class_name' => 'XI IPA 1',
+            'class_name' => 'RPL XI',
             'exam_date' => now()->toDateString(),
             'entry_pin' => '123456',
             'status' => 'active',

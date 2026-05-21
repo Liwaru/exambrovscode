@@ -27,7 +27,7 @@ class UserFactory extends Factory
             'username' => fake()->unique()->userName(),
             'password' => static::$password ??= Hash::make('password'),
             'role' => 'student',
-            'class_name' => 'XI IPA 1',
+            'class_name' => 'RPL XI',
             'level' => 1,
             'status' => 'aktif',
         ];

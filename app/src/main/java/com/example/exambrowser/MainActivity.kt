@@ -97,22 +97,37 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_pin)
         applySystemBarsPadding(R.id.pinMain)
 
+        val studentNameLayout = findViewById<TextInputLayout>(R.id.studentNameLayout)
+        val studentNameInput = findViewById<TextInputEditText>(R.id.studentNameInput)
         val pinLayout = findViewById<TextInputLayout>(R.id.pinLayout)
         val pinInput = findViewById<TextInputEditText>(R.id.pinInput)
         val pinButton = findViewById<MaterialButton>(R.id.pinButton)
 
+        studentNameInput.setText(getSavedStudentName())
+
         pinButton.setOnClickListener {
+            val studentName = studentNameInput.text?.toString()
+                ?.replace(Regex("\\s+"), " ")
+                ?.trim()
+                .orEmpty()
             val pin = pinInput.text?.toString().orEmpty()
+            if (studentName.length < 3) {
+                studentNameLayout.error = "Nama siswa wajib diisi minimal 3 huruf."
+                return@setOnClickListener
+            }
+
             if (pin.length != 6) {
+                studentNameLayout.error = null
                 pinLayout.error = "PIN harus 6 digit."
                 return@setOnClickListener
             }
 
+            studentNameLayout.error = null
             pinLayout.error = null
             pinButton.isEnabled = false
 
             Thread {
-                val result = joinExamSession(pin)
+                val result = joinExamSession(pin, studentName)
 
                 runOnUiThread {
                     pinButton.isEnabled = true
@@ -124,6 +139,7 @@ class MainActivity : AppCompatActivity() {
                             Snackbar.LENGTH_SHORT
                         ).show()
                         activeSessionId = result.sessionId
+                        saveDetectedStudentName(studentName)
                         result.sessionId?.let { saveActiveSession(it) }
                         pinButton.postDelayed({ showExamWebsite() }, 700)
                     } else {
@@ -134,7 +150,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun joinExamSession(pin: String): JoinResult {
+    private fun joinExamSession(pin: String, studentName: String): JoinResult {
         return try {
             val connection = (URL("$BASE_URL/api/student/exam-sessions/join").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -149,6 +165,7 @@ class MainActivity : AppCompatActivity() {
                 output.write(
                     JSONObject()
                         .put("pin", pin)
+                        .put("student_username", studentName)
                         .put("device_id", getStoredDeviceId())
                         .put("device_name", getDeviceName())
                         .toString()

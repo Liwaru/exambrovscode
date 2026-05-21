@@ -16,6 +16,8 @@ class ExamSession extends Model
         'title',
         'class_name',
         'exam_date',
+        'start_time',
+        'end_time',
         'entry_pin',
         'exit_pin',
         'status',

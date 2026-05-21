@@ -7,7 +7,6 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, sans-serif; background: #fff7ed; color: #431407; }
-        header { background: #f97316; color: #fff; padding: 20px 28px; display: flex; justify-content: space-between; align-items: center; }
         main { padding: 24px; max-width: 1040px; margin: 0 auto; }
         section { background: #fff; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 18px; }
         h1 { margin: 6px 0 8px; }
@@ -23,6 +22,11 @@
         .status-offline { background: #fee2e2; color: #991b1b; }
         .log-type { font-weight: 700; color: #9a3412; }
         .log-message { color: #7c2d12; font-size: 14px; margin-top: 3px; }
+        .pagination-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin-top: 14px; }
+        .pagination-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pagination-controls a, .pagination-controls span { display: inline-block; padding: 8px 10px; background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 6px; text-decoration: none; }
+        .pagination-controls a.active { background: #ea580c; color: #fff; border-color: #ea580c; }
+        .pagination-controls span.disabled { opacity: .55; cursor: not-allowed; }
         button, a.button {
             display: inline-block;
             border: 0;
@@ -44,18 +48,7 @@
     </style>
 </head>
 <body>
-<header>
-    <div>
-        <strong>Detail Ujian</strong>
-        <div>{{ auth()->user()->username }}</div>
-    </div>
-    <div class="actions">
-        <form method="post" action="{{ route('logout') }}">
-            @csrf
-            <button type="submit" class="secondary">Keluar</button>
-        </form>
-    </div>
-</header>
+@include('partials.header', ['dashboardRoute' => 'teacher.dashboard', 'dashboardLabel' => 'Ke dashboard guru'])
 
 <main>
     <div style="margin-bottom: 14px;">
@@ -63,7 +56,7 @@
     </div>
 
     <section>
-        <p class="eyebrow">{{ $session->external_exam_id ? 'Dari e-learning' : 'Sesi manual' }}</p>
+        <p class="eyebrow">{{ $session->external_exam_id ? 'Sesi dari e-learning' : 'Sesi manual' }}</p>
         <h1>{{ $session->title }}</h1>
         <div class="muted">Guru mengelola PIN masuk dan PIN keluar dari halaman ini.</div>
 
@@ -194,12 +187,34 @@
                 @endforelse
             </tbody>
         </table>
+        <div class="pagination-bar" id="activity-pagination">
+            <div class="pagination-controls" id="activity-pagination-controls">
+                @if ($activityLogs->lastPage() > 1)
+                    @if ($activityLogs->onFirstPage())
+                        <span class="disabled">Sebelumnya</span>
+                    @else
+                        <a href="{{ request()->fullUrlWithQuery(['page' => $activityLogs->currentPage() - 1]) }}" data-activity-page="{{ $activityLogs->currentPage() - 1 }}">Sebelumnya</a>
+                    @endif
+
+                    @for ($page = 1; $page <= $activityLogs->lastPage(); $page++)
+                        <a class="{{ $page === $activityLogs->currentPage() ? 'active' : '' }}" href="{{ request()->fullUrlWithQuery(['page' => $page]) }}" data-activity-page="{{ $page }}">{{ $page }}</a>
+                    @endfor
+
+                    @if ($activityLogs->hasMorePages())
+                        <a href="{{ request()->fullUrlWithQuery(['page' => $activityLogs->currentPage() + 1]) }}" data-activity-page="{{ $activityLogs->currentPage() + 1 }}">Berikutnya</a>
+                    @else
+                        <span class="disabled">Berikutnya</span>
+                    @endif
+                @endif
+            </div>
+        </div>
     </section>
 
 </main>
 <script>
     const activityLogsUrl = @json(route('teacher.exam-sessions.activity-logs', $session));
     const activityStreamUrl = @json(route('teacher.exam-sessions.activity-stream', $session));
+    let currentActivityPage = @json($activityLogs->currentPage());
     const activityLabels = {
         joined: 'Masuk ujian',
         heartbeat: 'Masih aktif',
@@ -255,6 +270,54 @@
         }).join('');
     }
 
+    function buildActivityLogsUrl(page = currentActivityPage) {
+        const url = new URL(activityLogsUrl, window.location.origin);
+        url.searchParams.set('page', page);
+
+        return url.toString();
+    }
+
+    function buildPageUrl(page) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', page);
+
+        return url.toString();
+    }
+
+    function renderActivityPagination(pagination) {
+        const controls = document.getElementById('activity-pagination-controls');
+
+        if (! pagination || ! pagination.total) {
+            controls.innerHTML = '';
+            return;
+        }
+
+        currentActivityPage = pagination.current_page;
+
+        if (pagination.last_page <= 1) {
+            controls.innerHTML = '';
+            return;
+        }
+
+        const pages = Array.from({ length: pagination.last_page }, (_, index) => index + 1)
+            .map((page) => `
+                <a class="${page === pagination.current_page ? 'active' : ''}" href="${buildPageUrl(page)}" data-activity-page="${page}">
+                    ${page}
+                </a>
+            `)
+            .join('');
+
+        controls.innerHTML = `
+            ${pagination.current_page <= 1
+                ? '<span class="disabled">Sebelumnya</span>'
+                : `<a href="${buildPageUrl(pagination.current_page - 1)}" data-activity-page="${pagination.current_page - 1}">Sebelumnya</a>`}
+            ${pages}
+            ${pagination.current_page >= pagination.last_page
+                ? '<span class="disabled">Berikutnya</span>'
+                : `<a href="${buildPageUrl(pagination.current_page + 1)}" data-activity-page="${pagination.current_page + 1}">Berikutnya</a>`}
+        `;
+    }
+
     function renderActivityLogs(logs) {
         const body = document.getElementById('activity-log-body');
 
@@ -290,7 +353,7 @@
 
     async function refreshActivityLogs() {
         try {
-            const response = await fetch(activityLogsUrl, {
+            const response = await fetch(buildActivityLogsUrl(), {
                 headers: {
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
@@ -304,6 +367,7 @@
             const data = await response.json();
             renderDeviceStatus(data.devices || []);
             renderActivityLogs(data.logs || []);
+            renderActivityPagination(data.pagination);
         } catch (error) {
             // Keep the current table visible if the network drops briefly.
         }
@@ -320,7 +384,7 @@
         source.addEventListener('activity', (event) => {
             const data = JSON.parse(event.data);
             renderDeviceStatus(data.devices || []);
-            renderActivityLogs(data.logs || []);
+            refreshActivityLogs();
         });
 
         source.onerror = () => {
@@ -331,6 +395,25 @@
 
     refreshActivityLogs();
     connectActivityStream();
+
+    document.getElementById('activity-pagination-controls').addEventListener('click', (event) => {
+        const link = event.target.closest('[data-activity-page]');
+
+        if (! link) {
+            return;
+        }
+
+        event.preventDefault();
+        currentActivityPage = Number(link.dataset.activityPage);
+        window.history.pushState({}, '', buildPageUrl(currentActivityPage));
+        refreshActivityLogs();
+    });
+
+    window.addEventListener('popstate', () => {
+        const page = Number(new URL(window.location.href).searchParams.get('page') || 1);
+        currentActivityPage = page;
+        refreshActivityLogs();
+    });
 
     document.querySelectorAll('[data-pin-form]').forEach((form) => {
         form.addEventListener('submit', async (event) => {

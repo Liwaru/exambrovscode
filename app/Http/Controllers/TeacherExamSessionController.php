@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 
 class TeacherExamSessionController extends Controller
 {
+    private const ACTIVITY_LOGS_PER_PAGE = 15;
+
     public function index(Request $request)
     {
         $sessions = ExamSession::query()
@@ -45,10 +47,15 @@ class TeacherExamSessionController extends Controller
 
         $activityLogs = $examSession->activityLogs()
             ->latest('occurred_at')
+            ->paginate(self::ACTIVITY_LOGS_PER_PAGE)
+            ->withQueryString();
+
+        $recentActivityLogs = $examSession->activityLogs()
+            ->latest('occurred_at')
             ->limit(100)
             ->get();
 
-        $lastSeenByDevice = $activityLogs
+        $lastSeenByDevice = $recentActivityLogs
             ->whereNotNull('device_id')
             ->groupBy('device_id')
             ->map(fn ($logs) => $logs->sortByDesc('occurred_at')->first());
@@ -102,7 +109,7 @@ class TeacherExamSessionController extends Controller
     {
         $this->authorizeTeacher($request, $examSession);
 
-        return response()->json($this->activityPayload($examSession));
+        return response()->json($this->activityPayload($examSession, $request->integer('page', 1)));
     }
 
     public function activityStream(Request $request, ExamSession $examSession)
@@ -133,14 +140,18 @@ class TeacherExamSessionController extends Controller
         ]);
     }
 
-    private function activityPayload(ExamSession $examSession): array
+    private function activityPayload(ExamSession $examSession, int $page = 1): array
     {
-        $activityLogs = $examSession->activityLogs()
+        $recentActivityLogs = $examSession->activityLogs()
             ->latest('occurred_at')
             ->limit(100)
             ->get();
 
-        $lastSeenByDevice = $activityLogs
+        $activityLogs = $examSession->activityLogs()
+            ->latest('occurred_at')
+            ->paginate(self::ACTIVITY_LOGS_PER_PAGE, ['*'], 'page', max(1, $page));
+
+        $lastSeenByDevice = $recentActivityLogs
             ->whereNotNull('device_id')
             ->groupBy('device_id')
             ->map(fn ($logs) => $logs->sortByDesc('occurred_at')->first())
@@ -154,7 +165,7 @@ class TeacherExamSessionController extends Controller
                 'relative_time' => $activity->occurred_at?->diffForHumans(),
                 'is_online' => ($activity->occurred_at?->diffInSeconds(now()) ?? 999999) <= 90,
             ])->values(),
-            'logs' => $activityLogs->map(fn ($activity) => [
+            'logs' => $activityLogs->getCollection()->map(fn ($activity) => [
                 'occurred_at' => $activity->occurred_at?->format('d-m-Y H:i:s'),
                 'relative_time' => $activity->occurred_at?->diffForHumans(),
                 'student_username' => $activity->student_username,
@@ -162,6 +173,14 @@ class TeacherExamSessionController extends Controller
                 'event_type' => $activity->event_type,
                 'message' => $activity->message,
             ])->values(),
+            'pagination' => [
+                'current_page' => $activityLogs->currentPage(),
+                'last_page' => $activityLogs->lastPage(),
+                'per_page' => $activityLogs->perPage(),
+                'total' => $activityLogs->total(),
+                'from' => $activityLogs->firstItem(),
+                'to' => $activityLogs->lastItem(),
+            ],
         ];
     }
 

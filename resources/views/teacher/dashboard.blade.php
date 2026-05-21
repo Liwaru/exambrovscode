@@ -7,13 +7,12 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, sans-serif; background: #fff7ed; color: #431407; }
-        header { background: #f97316; color: #fff; padding: 20px 28px; display: flex; justify-content: space-between; align-items: center; }
         main { padding: 24px; max-width: 1160px; margin: 0 auto; }
         section { background: #fff; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 18px; }
         .hero h1 { margin: 6px 0 4px; font-size: 28px; }
         .eyebrow { margin: 0; color: #ea580c; font-weight: 700; }
         .muted { color: #9a3412; }
-        .summary { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 12px; margin: 18px 0; }
+        .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
         .summary-item { background: #fff; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px; }
         .summary-item strong { display: block; font-size: 28px; margin-top: 6px; }
         button { border: 0; border-radius: 6px; background: #ea580c; color: #fff; padding: 10px 12px; cursor: pointer; }
@@ -45,27 +44,17 @@
             padding: 10px 12px;
         }
         @media (max-width: 900px) {
-            .summary { grid-template-columns: 1fr; }
             .session-item { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-<header>
-    <div>
-        <strong>Dashboard Guru</strong>
-        <div>{{ auth()->user()->username }}</div>
-    </div>
-    <form method="post" action="{{ route('logout') }}">
-        @csrf
-        <button type="submit" class="secondary">Keluar</button>
-    </form>
-</header>
+@include('partials.header', ['dashboardRoute' => 'teacher.dashboard', 'dashboardLabel' => 'Ke dashboard guru'])
 
 <main>
     <section class="hero">
-        <p class="eyebrow">Exambro</p>
-        <h1>Kelola sesi ujian</h1>
+        <p class="eyebrow">Dashboard Guru</p>
+        <h1>{{ ucwords(auth()->user()->username) }}</h1>
         <div class="muted">Ujian dari e-learning akan masuk ke sini sebagai sesi tersinkron, lalu guru membuat PIN masuk dan PIN keluar.</div>
     </section>
 
@@ -79,7 +68,7 @@
             <strong>{{ $summary['active'] }}</strong>
         </div>
         <div class="summary-item">
-            <span class="muted">Dari e-learning</span>
+            <span class="muted">Sesi dari e-learning</span>
             <strong>{{ $summary['synced'] }}</strong>
         </div>
     </div>
@@ -95,10 +84,10 @@
                 <article class="session-item">
                     <div>
                         <div class="session-title"><strong>{{ $session->title }}</strong></div>
-                        <div class="muted">{{ $session->class_name }} · {{ $session->exam_date->format('d-m-Y') }}</div>
-                        <div style="margin-top: 8px;">
-                            @if ($session->external_exam_id)
-                                <span class="status">{{ $session->external_source }} #{{ $session->external_exam_id }}</span>
+                        <div class="muted">
+                            {{ $session->class_name }} · {{ $session->exam_date->format('d-m-Y') }}
+                            @if ($session->start_time && $session->end_time)
+                                · {{ \Carbon\Carbon::parse($session->start_time)->format('H:i') }}-{{ \Carbon\Carbon::parse($session->end_time)->format('H:i') }}
                             @endif
                         </div>
                     </div>

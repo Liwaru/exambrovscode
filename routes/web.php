@@ -6,9 +6,13 @@ use App\Http\Controllers\SuperadminDashboardController;
 use App\Http\Controllers\TeacherExamSessionController;
 
 Route::get('/', function () {
-    return auth()->check()
-        ? redirect()->route('teacher.dashboard')
-        : view('auth.login');
+    if (! auth()->check()) {
+        return view('auth.login');
+    }
+
+    return in_array(auth()->user()->role, ['admin', 'superadmin'], true)
+        ? redirect()->route('admin.dashboard')
+        : redirect()->route('teacher.dashboard');
 });
 
 Route::middleware('guest')->group(function () {
@@ -19,7 +23,17 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    Route::get('/superadmin/dashboard', [SuperadminDashboardController::class, 'index'])->name('superadmin.dashboard');
+    Route::redirect('/superadmin/dashboard', '/admin/dashboard');
+    Route::get('/admin/dashboard', [SuperadminDashboardController::class, 'index'])->name('admin.dashboard');
+    Route::get('/admin/students', [SuperadminDashboardController::class, 'students'])->name('admin.students');
+    Route::get('/admin/students/create', [SuperadminDashboardController::class, 'createStudent'])->name('admin.students.create');
+    Route::post('/admin/students', [SuperadminDashboardController::class, 'storeStudent'])->name('admin.students.store');
+    Route::get('/admin/teachers', [SuperadminDashboardController::class, 'teachers'])->name('admin.teachers');
+    Route::get('/admin/teachers/create', [SuperadminDashboardController::class, 'createTeacher'])->name('admin.teachers.create');
+    Route::post('/admin/teachers', [SuperadminDashboardController::class, 'storeTeacher'])->name('admin.teachers.store');
+    Route::get('/admin/exams', [SuperadminDashboardController::class, 'exams'])->name('admin.exams');
+    Route::get('/admin/exams/create', [SuperadminDashboardController::class, 'createExam'])->name('admin.exams.create');
+    Route::post('/admin/exams', [SuperadminDashboardController::class, 'storeExam'])->name('admin.exams.store');
     Route::get('/teacher/dashboard', [TeacherExamSessionController::class, 'index'])->name('teacher.dashboard');
     Route::post('/teacher/exam-sessions', [TeacherExamSessionController::class, 'store'])->name('teacher.exam-sessions.store');
     Route::get('/teacher/exam-sessions/{examSession}', [TeacherExamSessionController::class, 'show'])->name('teacher.exam-sessions.show');
