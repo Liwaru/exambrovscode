@@ -1,7 +1,22 @@
 @php
-    $dashboardRoute = $dashboardRoute ?? (auth()->user()?->role === 'admin' ? 'admin.dashboard' : 'teacher.dashboard');
-    $dashboardLabel = $dashboardLabel ?? 'Ke dashboard';
-    $navItems = $navItems ?? [];
+    $headerUser = auth()->user();
+    $dashboardRoute = ($headerUser?->isAdmin() || $headerUser?->isHeadmaster()) ? 'admin.dashboard' : 'teacher.dashboard';
+    $dashboardLabel = ($headerUser?->isAdmin() || $headerUser?->isHeadmaster()) ? 'Ke dashboard admin' : 'Ke dashboard guru';
+    $navItems = [];
+
+    if ($headerUser?->isAdmin()) {
+        $navItems = [
+            ['label' => 'Data Siswa', 'href' => route('admin.students'), 'icon' => 'students'],
+            ['label' => 'Data Guru', 'href' => route('admin.teachers'), 'icon' => 'teachers'],
+            ['label' => 'Data Ujian', 'href' => route('admin.exams'), 'icon' => 'exams'],
+            ['label' => 'Database', 'href' => route('admin.database'), 'icon' => 'database'],
+            ['label' => 'Catatan Aktivitas', 'href' => route('admin.activity-logs'), 'icon' => 'activity'],
+        ];
+    } elseif ($headerUser?->isHeadmaster()) {
+        $navItems = [
+            ['label' => 'Catatan Aktivitas', 'href' => route('admin.activity-logs'), 'icon' => 'activity'],
+        ];
+    }
 @endphp
 
 <style>
@@ -10,20 +25,23 @@
         color: #fff;
         padding: 15px 22px;
         display: grid;
-        grid-template-columns: 150px minmax(0, 1fr) 112px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
-        gap: 18px;
+        gap: 22px;
+        min-height: 100px;
     }
 
     .app-brand-link {
         display: inline-flex;
         align-items: center;
+        width: 150px;
         color: #fff;
         text-decoration: none;
     }
 
     .app-brand-logo {
         height: 50px;
+        max-width: 150px;
         width: auto;
         display: block;
     }
@@ -33,6 +51,8 @@
         justify-content: center;
         gap: 8px;
         flex-wrap: wrap;
+        min-width: 0;
+        align-content: center;
     }
 
     .app-nav-link {
@@ -45,7 +65,7 @@
         border: 1px solid rgba(255,255,255,.28);
         background: rgba(255,255,255,.08);
         color: #fff;
-        min-width: 102px;
+        width: 108px;
         min-height: 50px;
         padding: 7px 11px;
         text-decoration: none;
@@ -69,6 +89,10 @@
         fill: none;
         stroke-linecap: round;
         stroke-linejoin: round;
+    }
+
+    .app-logout-form {
+        justify-self: end;
     }
 
     .app-logout-button {
@@ -101,7 +125,7 @@
         stroke-linejoin: round;
     }
 
-    @media (max-width: 700px) {
+    @media (max-width: 980px) {
         .app-header {
             grid-template-columns: 1fr auto;
             gap: 14px;
@@ -110,7 +134,26 @@
         .app-nav {
             order: 3;
             grid-column: 1 / -1;
-            justify-content: flex-start;
+            justify-content: center;
+        }
+
+        .app-logout-form {
+            grid-column: 2;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .app-nav {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            width: 100%;
+        }
+
+        .app-nav-link {
+            width: auto;
+            min-height: 48px;
+            padding: 8px 9px;
+            font-size: 14px;
         }
     }
 </style>
@@ -149,6 +192,22 @@
                                 <path d="M9 11h2" />
                             </svg>
                             @break
+
+                        @case('activity')
+                            <svg class="app-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M3 3v18h18" />
+                                <path d="m19 9-5 5-4-4-3 3" />
+                                <path d="M19 4v5h-5" />
+                            </svg>
+                            @break
+
+                        @case('database')
+                            <svg class="app-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                <ellipse cx="12" cy="5" rx="8" ry="3" />
+                                <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+                                <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+                            </svg>
+                            @break
                     @endswitch
 
                     <span>{{ $item['label'] }}</span>
@@ -157,7 +216,7 @@
         </nav>
     @endif
 
-    <form method="post" action="{{ route('logout') }}">
+    <form method="post" action="{{ route('logout') }}" class="app-logout-form">
         @csrf
         <button type="submit" class="app-logout-button">
             <svg class="app-logout-icon" viewBox="0 0 24 24" aria-hidden="true">

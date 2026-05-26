@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use App\Models\ActivityLog;
 use App\Models\User;
 
 class AuthController extends Controller
@@ -29,6 +30,10 @@ class AuthController extends Controller
             && $this->passwordMatches($credentials['password'], $user->password);
 
         if (! $passwordMatches) {
+            ActivityLog::record('login_failed', "Login gagal untuk username {$credentials['username']}.", $request, [
+                'properties' => ['username' => $credentials['username']],
+            ]);
+
             return back()->withErrors([
                 'username' => 'Username atau password salah.',
             ])->onlyInput('username');
@@ -37,11 +42,13 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        if (in_array($request->user()->role, ['admin', 'superadmin'], true)) {
+        ActivityLog::record('login', "{$user->username} login ke dashboard.", $request);
+
+        if ($request->user()->isAdmin() || $request->user()->isHeadmaster()) {
             return redirect()->route('admin.dashboard');
         }
 
-        if ($request->user()->role === 'teacher') {
+        if ($request->user()->isTeacher()) {
             return redirect()->route('teacher.dashboard');
         }
 
@@ -54,6 +61,12 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        $user = $request->user();
+
+        if ($user) {
+            ActivityLog::record('logout', "{$user->username} logout dari dashboard.", $request);
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

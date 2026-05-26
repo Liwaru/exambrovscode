@@ -23,7 +23,7 @@ class ExternalExamController extends Controller
 
         $teacher = User::query()
             ->where('username', $validated['teacher_username'])
-            ->where('role', 'teacher')
+            ->where('level', User::LEVEL_TEACHER)
             ->firstOrFail();
 
         $session = ExamSession::updateOrCreate(

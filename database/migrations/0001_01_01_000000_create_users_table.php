@@ -15,7 +15,6 @@ return new class extends Migration
             $table->increments('id_user');
             $table->string('username', 100)->unique();
             $table->string('password');
-            $table->string('role')->default('student');
             $table->string('class_name')->nullable();
             $table->tinyInteger('level')->default(1);
             $table->enum('status', ['aktif', 'nonaktif'])->default('aktif');

@@ -34,6 +34,10 @@
         th, td { padding: 13px 12px; text-align: left; border-bottom: 1px solid #ffedd5; }
         th { color: #9a3412; font-size: 14px; }
         tbody tr:hover { background: #fff7ed; }
+        .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .row-actions form { margin: 0; }
+        button.button { border: 0; cursor: pointer; font: inherit; }
+        .danger { background: #b91c1c; }
         .empty-state { padding: 20px; border: 1px dashed #fdba74; border-radius: 8px; color: #9a3412; }
         @media (max-width: 700px) {
             main { padding: 16px; }
@@ -44,15 +48,7 @@
     </style>
 </head>
 <body>
-@include('partials.header', [
-    'dashboardRoute' => 'admin.dashboard',
-    'dashboardLabel' => 'Ke dashboard admin',
-    'navItems' => [
-        ['label' => 'Data Siswa', 'href' => route('admin.students'), 'icon' => 'students'],
-        ['label' => 'Data Guru', 'href' => route('admin.teachers'), 'icon' => 'teachers'],
-        ['label' => 'Data Ujian', 'href' => route('admin.exams'), 'icon' => 'exams'],
-    ],
-])
+@include('partials.header')
 
 <main>
     <section>
@@ -78,6 +74,7 @@
                         <th>Nama Guru</th>
                         <th>Username</th>
                         <th>Mapel</th>
+                        <th>Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -86,6 +83,16 @@
                             <td><strong>{{ $teacher->nama_guru }}</strong></td>
                             <td>{{ $teacher->username ?? '-' }}</td>
                             <td>{{ $teacher->mapel ?? '-' }}</td>
+                            <td>
+                                <div class="row-actions">
+                                    <a class="button" href="{{ route('admin.teachers.edit', $teacher->id_guru) }}">Edit</a>
+                                    <form method="post" action="{{ route('admin.teachers.destroy', $teacher->id_guru) }}" onsubmit="return confirm('Hapus data guru ini?')">
+                                        @csrf
+                                        @method('delete')
+                                        <button type="submit" class="button danger">Hapus</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>

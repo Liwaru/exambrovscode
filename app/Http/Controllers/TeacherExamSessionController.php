@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\ExamSession;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TeacherExamSessionController extends Controller
 {
@@ -11,6 +13,10 @@ class TeacherExamSessionController extends Controller
 
     public function index(Request $request)
     {
+        ActivityLog::record('menu_opened', "{$request->user()?->username} membuka menu Dashboard Guru.", $request, [
+            'properties' => ['menu' => 'Dashboard Guru'],
+        ]);
+
         $sessions = ExamSession::query()
             ->where('teacher_id', $request->user()->getKey())
             ->withCount('participants')
@@ -34,7 +40,12 @@ class TeacherExamSessionController extends Controller
             'exam_date' => ['required', 'date'],
         ]);
 
-        $request->user()->supervisedExamSessions()->create($validated);
+        $session = $request->user()->supervisedExamSessions()->create($validated);
+
+        ActivityLog::record('teacher_exam_created', "Guru membuat sesi ujian {$session->title}.", $request, [
+            'subject_table' => 'exam_sessions',
+            'subject_id' => $session->id,
+        ]);
 
         return redirect()->route('teacher.dashboard')->with('status', 'Sesi ujian berhasil dibuat.');
     }
@@ -42,6 +53,12 @@ class TeacherExamSessionController extends Controller
     public function show(Request $request, ExamSession $examSession)
     {
         $this->authorizeTeacher($request, $examSession);
+
+        ActivityLog::record('menu_opened', "{$request->user()?->username} membuka detail ujian {$examSession->title}.", $request, [
+            'subject_table' => 'exam_sessions',
+            'subject_id' => $examSession->id,
+            'properties' => ['menu' => 'Detail Ujian'],
+        ]);
 
         $examSession->load(['participants.student']);
 
@@ -76,6 +93,11 @@ class TeacherExamSessionController extends Controller
             'status' => 'active',
         ]);
 
+        ActivityLog::record('entry_pin_generated', "Guru membuat PIN masuk untuk ujian {$examSession->title}.", $request, [
+            'subject_table' => 'exam_sessions',
+            'subject_id' => $examSession->id,
+        ]);
+
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => 'PIN masuk berhasil dibuat.',
@@ -95,6 +117,11 @@ class TeacherExamSessionController extends Controller
             'exit_pin' => $this->generatePin(),
         ]);
 
+        ActivityLog::record('exit_pin_generated', "Guru membuat PIN keluar untuk ujian {$examSession->title}.", $request, [
+            'subject_table' => 'exam_sessions',
+            'subject_id' => $examSession->id,
+        ]);
+
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => 'PIN keluar berhasil dibuat.',
@@ -105,39 +132,73 @@ class TeacherExamSessionController extends Controller
         return back()->with('status', 'PIN keluar berhasil dibuat.');
     }
 
+    public function updateStatus(Request $request, ExamSession $examSession)
+    {
+        $this->authorizeTeacher($request, $examSession);
+
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+        ]);
+
+        $examSession->update([
+            'status' => $validated['status'],
+        ]);
+
+        ActivityLog::record('exam_status_updated', "Status ujian {$examSession->title} diubah menjadi {$validated['status']}.", $request, [
+            'subject_table' => 'exam_sessions',
+            'subject_id' => $examSession->id,
+        ]);
+
+        $message = $validated['status'] === 'active'
+            ? 'Sesi ujian diaktifkan. Siswa bisa masuk dengan PIN masuk.'
+            : 'Sesi ujian dinonaktifkan. Siswa yang masih di dalam akan dipaksa keluar saat aplikasi tersambung.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'status' => $examSession->status,
+            ]);
+        }
+
+        return back()->with('status', $message);
+    }
+
+    public function destroySelected(Request $request)
+    {
+        $validated = $request->validate([
+            'exam_session_ids' => ['required', 'array', 'min:1'],
+            'exam_session_ids.*' => ['integer'],
+        ]);
+
+        $sessions = ExamSession::query()
+            ->where('teacher_id', $request->user()->getKey())
+            ->whereIn('id', $validated['exam_session_ids'])
+            ->get();
+
+        $deleted = 0;
+
+        foreach ($sessions as $session) {
+            if ($session->delete()) {
+                $deleted++;
+
+                ActivityLog::record('teacher_exam_deleted', "Guru menghapus sesi ujian {$session->title} dan bisa dipulihkan.", $request, [
+                    'subject_table' => 'exam_sessions',
+                    'subject_id' => $session->id,
+                    'recoverable' => true,
+                ]);
+            }
+        }
+
+        return redirect()
+            ->route('teacher.dashboard')
+            ->with('status', "{$deleted} sesi ujian berhasil dihapus.");
+    }
+
     public function activityLogs(Request $request, ExamSession $examSession)
     {
         $this->authorizeTeacher($request, $examSession);
 
         return response()->json($this->activityPayload($examSession, $request->integer('page', 1)));
-    }
-
-    public function activityStream(Request $request, ExamSession $examSession)
-    {
-        $this->authorizeTeacher($request, $examSession);
-
-        return response()->stream(function () use ($examSession) {
-            $lastActivityId = null;
-            $startedAt = time();
-
-            while (! connection_aborted() && time() - $startedAt < 120) {
-                $latestActivityId = $examSession->activityLogs()->max('id');
-
-                if ($latestActivityId !== $lastActivityId) {
-                    $lastActivityId = $latestActivityId;
-                    echo "event: activity\n";
-                    echo 'data: '.json_encode($this->activityPayload($examSession))."\n\n";
-                    ob_flush();
-                    flush();
-                }
-
-                sleep(1);
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'X-Accel-Buffering' => 'no',
-        ]);
     }
 
     private function activityPayload(ExamSession $examSession, int $page = 1): array

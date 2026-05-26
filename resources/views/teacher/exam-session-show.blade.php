@@ -17,6 +17,7 @@
         .pin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .pin-card { border: 1px solid #fed7aa; border-radius: 8px; padding: 18px; }
         .pin-value { font-size: 30px; font-weight: 700; margin: 8px 0 14px; }
+        .status-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
         .status-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
         .status-online { background: #dcfce7; color: #166534; }
         .status-offline { background: #fee2e2; color: #991b1b; }
@@ -38,6 +39,7 @@
             cursor: pointer;
         }
         button.secondary, a.secondary { background: #9a3412; }
+        button.danger { background: #b91c1c; }
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ffedd5; }
         .flash { color: #166534; }
@@ -48,7 +50,7 @@
     </style>
 </head>
 <body>
-@include('partials.header', ['dashboardRoute' => 'teacher.dashboard', 'dashboardLabel' => 'Ke dashboard guru'])
+@include('partials.header')
 
 <main>
     <div style="margin-bottom: 14px;">
@@ -73,6 +75,19 @@
                 <div class="muted">Status</div>
                 <strong id="session-status">{{ $session->status }}</strong>
             </div>
+        </div>
+
+        <div class="status-actions">
+            <form method="post" action="{{ route('teacher.exam-sessions.status', $session) }}" data-status-form>
+                @csrf
+                <input type="hidden" name="status" value="active">
+                <button type="submit" @disabled($session->status === 'active')>Aktifkan ujian</button>
+            </form>
+            <form method="post" action="{{ route('teacher.exam-sessions.status', $session) }}" data-status-form>
+                @csrf
+                <input type="hidden" name="status" value="inactive">
+                <button type="submit" class="danger" @disabled($session->status === 'inactive')>Nonaktifkan & paksa keluar</button>
+            </form>
         </div>
     </section>
 
@@ -164,6 +179,7 @@
                             'exit_button_pressed' => 'Tombol keluar ujian ditekan',
                             'exit_pin_failed' => 'PIN keluar salah',
                             'exited' => 'Keluar resmi',
+                            'forced_exit' => 'Dipaksa keluar',
                         ];
                     @endphp
                     <tr>
@@ -213,8 +229,10 @@
 </main>
 <script>
     const activityLogsUrl = @json(route('teacher.exam-sessions.activity-logs', $session));
-    const activityStreamUrl = @json(route('teacher.exam-sessions.activity-stream', $session));
+    const activityRefreshIntervalMs = 5000;
     let currentActivityPage = @json($activityLogs->currentPage());
+    let activityRefreshTimer = null;
+    let isRefreshingActivity = false;
     const activityLabels = {
         joined: 'Masuk ujian',
         heartbeat: 'Masih aktif',
@@ -229,6 +247,7 @@
         exit_button_pressed: 'Tombol keluar ujian ditekan',
         exit_pin_failed: 'PIN keluar salah',
         exited: 'Keluar resmi',
+        forced_exit: 'Dipaksa keluar',
     };
 
     function escapeHtml(value) {
@@ -352,6 +371,12 @@
     }
 
     async function refreshActivityLogs() {
+        if (isRefreshingActivity) {
+            return;
+        }
+
+        isRefreshingActivity = true;
+
         try {
             const response = await fetch(buildActivityLogsUrl(), {
                 headers: {
@@ -370,31 +395,30 @@
             renderActivityPagination(data.pagination);
         } catch (error) {
             // Keep the current table visible if the network drops briefly.
+        } finally {
+            isRefreshingActivity = false;
         }
     }
 
-    function connectActivityStream() {
-        if (! window.EventSource) {
-            refreshActivityLogs();
+    function startActivityRefresh() {
+        if (activityRefreshTimer) {
             return;
         }
 
-        const source = new EventSource(activityStreamUrl);
+        activityRefreshTimer = setInterval(refreshActivityLogs, activityRefreshIntervalMs);
+    }
 
-        source.addEventListener('activity', (event) => {
-            const data = JSON.parse(event.data);
-            renderDeviceStatus(data.devices || []);
-            refreshActivityLogs();
-        });
+    function stopActivityRefresh() {
+        if (! activityRefreshTimer) {
+            return;
+        }
 
-        source.onerror = () => {
-            source.close();
-            setTimeout(connectActivityStream, 3000);
-        };
+        clearInterval(activityRefreshTimer);
+        activityRefreshTimer = null;
     }
 
     refreshActivityLogs();
-    connectActivityStream();
+    startActivityRefresh();
 
     document.getElementById('activity-pagination-controls').addEventListener('click', (event) => {
         const link = event.target.closest('[data-activity-page]');
@@ -413,6 +437,68 @@
         const page = Number(new URL(window.location.href).searchParams.get('page') || 1);
         currentActivityPage = page;
         refreshActivityLogs();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopActivityRefresh();
+            return;
+        }
+
+        refreshActivityLogs();
+        startActivityRefresh();
+    });
+
+    window.addEventListener('pagehide', stopActivityRefresh);
+
+    function updateStatusButtons(status) {
+        document.querySelectorAll('[data-status-form]').forEach((form) => {
+            const button = form.querySelector('button[type="submit"]');
+            const requestedStatus = form.querySelector('input[name="status"]')?.value;
+
+            if (button && requestedStatus) {
+                button.disabled = requestedStatus === status;
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-status-form]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const button = form.querySelector('button[type="submit"]');
+            const feedback = document.getElementById('pin-feedback');
+            const statusTarget = document.getElementById('session-status');
+            const originalText = button.textContent;
+
+            button.disabled = true;
+            button.textContent = 'Memproses...';
+
+            try {
+                const response = await fetch(form.action, {
+                    method: form.method,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: new FormData(form),
+                });
+
+                if (! response.ok) {
+                    throw new Error('Gagal mengubah status ujian.');
+                }
+
+                const data = await response.json();
+                statusTarget.textContent = data.status;
+                feedback.textContent = data.message;
+                updateStatusButtons(data.status);
+            } catch (error) {
+                feedback.textContent = error.message;
+                button.disabled = false;
+            } finally {
+                button.textContent = originalText;
+            }
+        });
     });
 
     document.querySelectorAll('[data-pin-form]').forEach((form) => {
@@ -450,6 +536,7 @@
 
                 if (statusTarget && data.status) {
                     statusTarget.textContent = data.status;
+                    updateStatusButtons(data.status);
                 }
             } catch (error) {
                 feedback.textContent = error.message;

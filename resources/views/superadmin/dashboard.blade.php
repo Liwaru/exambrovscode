@@ -40,15 +40,7 @@
     </style>
 </head>
 <body>
-@include('partials.header', [
-    'dashboardRoute' => 'admin.dashboard',
-    'dashboardLabel' => 'Ke dashboard admin',
-    'navItems' => [
-        ['label' => 'Data Siswa', 'href' => route('admin.students'), 'icon' => 'students'],
-        ['label' => 'Data Guru', 'href' => route('admin.teachers'), 'icon' => 'teachers'],
-        ['label' => 'Data Ujian', 'href' => route('admin.exams'), 'icon' => 'exams'],
-    ],
-])
+@include('partials.header')
 
 <main>
     <section>

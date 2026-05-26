@@ -72,6 +72,10 @@ class StudentExamSessionController extends Controller
 
     public function heartbeat(ExamSession $examSession)
     {
+        if ($examSession->status !== 'active') {
+            return $this->forceExitResponse(request(), $examSession);
+        }
+
         $this->logActivity(request(), $examSession, 'heartbeat', 'Aplikasi siswa masih aktif.');
 
         return response()->json([
@@ -145,6 +149,10 @@ class StudentExamSessionController extends Controller
 
     public function activity(Request $request, ExamSession $examSession)
     {
+        if ($examSession->status !== 'active') {
+            return $this->forceExitResponse($request, $examSession);
+        }
+
         $validated = $request->validate([
             'event_type' => ['required', 'string', 'max:80', Rule::in([
                 'app_reopened',
@@ -184,6 +192,37 @@ class StudentExamSessionController extends Controller
             'success' => true,
             'message' => 'Aktivitas tercatat.',
         ]);
+    }
+
+    private function forceExitResponse(Request $request, ExamSession $examSession)
+    {
+        $alreadyLogged = ExamActivityLog::query()
+            ->where('exam_session_id', $examSession->id)
+            ->where('event_type', 'forced_exit')
+            ->where(function ($query) use ($request) {
+                $deviceId = $request->input('device_id');
+                $studentUsername = $request->input('student_username');
+
+                if ($deviceId) {
+                    $query->orWhere('device_id', $deviceId);
+                }
+
+                if ($studentUsername) {
+                    $query->orWhere('student_username', $studentUsername);
+                }
+            })
+            ->exists();
+
+        if (! $alreadyLogged) {
+            $this->logActivity($request, $examSession, 'forced_exit', 'Sesi dinonaktifkan oleh guru. Aplikasi siswa dipaksa keluar.');
+        }
+
+        return response()->json([
+            'success' => false,
+            'force_exit' => true,
+            'message' => 'Sesi ujian sudah dinonaktifkan oleh guru.',
+            'session_id' => $examSession->id,
+        ], 423);
     }
 
     private function logActivity(Request $request, ExamSession $examSession, string $eventType, ?string $message = null): void

@@ -19,6 +19,10 @@
         th, td { padding: 13px 12px; text-align: left; border-bottom: 1px solid #ffedd5; vertical-align: top; }
         th { color: #9a3412; font-size: 14px; }
         tbody tr:hover { background: #fff7ed; }
+        .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .row-actions form { margin: 0; }
+        button.button { border: 0; cursor: pointer; font: inherit; }
+        .danger { background: #b91c1c; }
         .empty-state { padding: 20px; border: 1px dashed #fdba74; border-radius: 8px; color: #9a3412; }
         @media (max-width: 700px) {
             main { padding: 16px; }
@@ -29,15 +33,7 @@
     </style>
 </head>
 <body>
-@include('partials.header', [
-    'dashboardRoute' => 'admin.dashboard',
-    'dashboardLabel' => 'Ke dashboard admin',
-    'navItems' => [
-        ['label' => 'Data Siswa', 'href' => route('admin.students'), 'icon' => 'students'],
-        ['label' => 'Data Guru', 'href' => route('admin.teachers'), 'icon' => 'teachers'],
-        ['label' => 'Data Ujian', 'href' => route('admin.exams'), 'icon' => 'exams'],
-    ],
-])
+@include('partials.header')
 
 <main>
     <section>
@@ -65,6 +61,7 @@
                         <th>Jam</th>
                         <th>Kelas</th>
                         <th>Guru Pengawas</th>
+                        <th>Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -81,6 +78,16 @@
                             </td>
                             <td>{{ $exam->class_name }}</td>
                             <td>{{ $exam->nama_guru ?? $exam->teacher_username ?? '-' }}</td>
+                            <td>
+                                <div class="row-actions">
+                                    <a class="button" href="{{ route('admin.exams.edit', $exam->id) }}">Edit</a>
+                                    <form method="post" action="{{ route('admin.exams.destroy', $exam->id) }}" onsubmit="return confirm('Hapus data ujian ini?')">
+                                        @csrf
+                                        @method('delete')
+                                        <button type="submit" class="button danger">Hapus</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>

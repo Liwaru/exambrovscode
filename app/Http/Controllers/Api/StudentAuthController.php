@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -19,13 +20,17 @@ class StudentAuthController extends Controller
 
         $student = User::query()
             ->where('username', $validated['username'])
-            ->where('role', 'student')
+            ->where('level', User::LEVEL_STUDENT)
             ->first();
 
         $passwordMatches = $student
             && $this->passwordMatches($validated['password'], $student->password);
 
         if (! $passwordMatches) {
+            ActivityLog::record('student_login_failed', "Login siswa gagal untuk username {$validated['username']}.", $request, [
+                'properties' => ['username' => $validated['username']],
+            ]);
+
             return response()->json([
                 'message' => 'Username atau password salah.',
             ], 422);
@@ -35,6 +40,10 @@ class StudentAuthController extends Controller
 
         $student->update([
             'api_token' => hash('sha256', $token),
+        ]);
+
+        ActivityLog::record('student_login', "{$student->username} login dari aplikasi siswa.", $request, [
+            'actor' => $student,
         ]);
 
         return response()->json([

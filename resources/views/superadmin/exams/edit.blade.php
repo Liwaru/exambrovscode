@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Tambah Ujian</title>
+    <title>Edit Ujian</title>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, sans-serif; background: #fff7ed; color: #431407; }
@@ -34,18 +34,19 @@
 <main>
     <section>
         <p class="eyebrow">Admin</p>
-        <h1>Tambah Ujian</h1>
-        <div class="muted">Tentukan pengawas, tanggal, jam, dan kelas ujian.</div>
+        <h1>Edit Ujian</h1>
+        <div class="muted">Perbarui pengawas, tanggal, jam, dan kelas ujian.</div>
 
-        <form method="post" action="{{ route('admin.exams.store') }}" class="form-grid">
+        <form method="post" action="{{ route('admin.exams.update', $exam->id) }}" class="form-grid">
             @csrf
+            @method('put')
 
             <label>
                 Nama ujian
                 <select name="title" required>
                     <option value="">Pilih materi ujian</option>
                     @foreach ($subjects as $subject)
-                        <option value="{{ $subject }}" @selected(old('title') === $subject)>{{ $subject }}</option>
+                        <option value="{{ $subject }}" @selected(old('title', $exam->title) === $subject)>{{ $subject }}</option>
                     @endforeach
                 </select>
                 @error('title') <span class="error">{{ $message }}</span> @enderror
@@ -56,7 +57,7 @@
                 <select name="teacher_id" required>
                     <option value="">Pilih guru pengawas</option>
                     @foreach ($teachers as $teacher)
-                        <option value="{{ $teacher->id_user }}" @selected(old('teacher_id') == $teacher->id_user)>
+                        <option value="{{ $teacher->id_user }}" @selected((int) old('teacher_id', $exam->teacher_id) === (int) $teacher->id_user)>
                             {{ $teacher->nama_guru }}
                         </option>
                     @endforeach
@@ -66,20 +67,20 @@
 
             <label>
                 Tanggal ujian
-                <input type="date" name="exam_date" value="{{ old('exam_date') }}" required>
+                <input type="date" name="exam_date" value="{{ old('exam_date', $exam->exam_date) }}" required>
                 @error('exam_date') <span class="error">{{ $message }}</span> @enderror
             </label>
 
             <div class="time-grid">
                 <label>
                     Jam mulai
-                    <input type="time" name="start_time" value="{{ old('start_time') }}" required>
+                    <input type="time" name="start_time" value="{{ old('start_time', \Carbon\Carbon::parse($exam->start_time)->format('H:i')) }}" required>
                     @error('start_time') <span class="error">{{ $message }}</span> @enderror
                 </label>
 
                 <label>
                     Jam selesai
-                    <input type="time" name="end_time" value="{{ old('end_time') }}" required>
+                    <input type="time" name="end_time" value="{{ old('end_time', \Carbon\Carbon::parse($exam->end_time)->format('H:i')) }}" required>
                     @error('end_time') <span class="error">{{ $message }}</span> @enderror
                 </label>
             </div>
@@ -89,14 +90,14 @@
                 <select name="class_name" required>
                     <option value="">Pilih kelas</option>
                     @foreach ($classes as $className)
-                        <option value="{{ $className }}" @selected(old('class_name', 'RPL XI') === $className)>{{ $className }}</option>
+                        <option value="{{ $className }}" @selected(old('class_name', $exam->class_name) === $className)>{{ $className }}</option>
                     @endforeach
                 </select>
                 @error('class_name') <span class="error">{{ $message }}</span> @enderror
             </label>
 
             <div class="actions">
-                <button type="submit">Simpan Ujian</button>
+                <button type="submit">Simpan Perubahan</button>
                 <a class="button secondary" href="{{ route('admin.exams') }}">Batal</a>
             </div>
         </form>

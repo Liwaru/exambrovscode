@@ -16,16 +16,16 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         User::query()
-            ->where('role', 'superadmin')
+            ->where('level', User::LEVEL_ADMIN)
+            ->where('username', 'superadmin')
             ->delete();
 
         User::updateOrCreate(
             ['username' => 'pak dedi'],
             [
                 'password' => 'pak dedi',
-                'role' => 'admin',
                 'class_name' => null,
-                'level' => 3,
+                'level' => User::LEVEL_ADMIN,
                 'status' => 'aktif',
             ]
         );
@@ -34,9 +34,8 @@ class DatabaseSeeder extends Seeder
             ['username' => 'guru'],
             [
                 'password' => 'password',
-                'role' => 'teacher',
                 'class_name' => null,
-                'level' => 2,
+                'level' => User::LEVEL_TEACHER,
                 'status' => 'aktif',
             ]
         );
@@ -45,9 +44,8 @@ class DatabaseSeeder extends Seeder
             ['username' => 'siswa'],
             [
                 'password' => 'password',
-                'role' => 'student',
                 'class_name' => 'RPL XI',
-                'level' => 1,
+                'level' => User::LEVEL_STUDENT,
                 'status' => 'aktif',
             ]
         );

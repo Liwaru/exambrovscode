@@ -26,9 +26,8 @@ class UserFactory extends Factory
         return [
             'username' => fake()->unique()->userName(),
             'password' => static::$password ??= Hash::make('password'),
-            'role' => 'student',
             'class_name' => 'RPL XI',
-            'level' => 1,
+            'level' => User::LEVEL_STUDENT,
             'status' => 'aktif',
         ];
     }

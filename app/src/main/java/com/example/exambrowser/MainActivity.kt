@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
 
     private var activeSessionId: Long? = null
     private var examWebView: WebView? = null
+    private var isForceExiting = false
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -589,9 +590,45 @@ class MainActivity : AppCompatActivity() {
                 output.write(body.toString().toByteArray())
             }
 
-            connection.inputStream?.close()
+            val responseCode = connection.responseCode
+            val responseBody = (if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            })?.bufferedReader()?.use { it.readText() }.orEmpty()
+
+            val json = runCatching { JSONObject(responseBody) }.getOrNull()
+            if (json?.optBoolean("force_exit", false) == true) {
+                val serverMessage = json.optString("message", "Sesi ujian sudah dinonaktifkan oleh guru.")
+                runOnUiThread {
+                    forceExitFromServer(serverMessage)
+                }
+            }
+
             connection.disconnect()
         }
+    }
+
+    private fun forceExitFromServer(message: String) {
+        if (isForceExiting) {
+            return
+        }
+
+        isForceExiting = true
+        stopHeartbeat()
+        exitExamLockMode()
+        clearActiveSession()
+        activeSessionId = null
+        examWebView?.destroy()
+        examWebView = null
+
+        runCatching {
+            Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG).show()
+        }
+
+        heartbeatHandler.postDelayed({
+            finishAndRemoveTask()
+        }, 800)
     }
 
     private fun reportStudentAction(eventType: String, message: String) {
