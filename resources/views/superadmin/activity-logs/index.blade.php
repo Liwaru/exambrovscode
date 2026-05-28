@@ -27,8 +27,28 @@
         .tab-link.active { background: #ea580c; border-color: #ea580c; color: #fff; }
         .tab-panel[hidden] { display: none; }
         .page-head { margin-bottom: 18px; }
-        .pagination { margin-top: 16px; }
-        .pagination nav { display: flex; gap: 8px; flex-wrap: wrap; }
+        .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; color: #9a3412; }
+        .pagination-info { font-size: 14px; }
+        .pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .pagination-controls a,
+        .pagination-controls span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            min-height: 36px;
+            padding: 8px 11px;
+            border: 1px solid #fed7aa;
+            border-radius: 6px;
+            background: #fff7ed;
+            color: #9a3412;
+            text-decoration: none;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .pagination-controls a:hover { background: #ffedd5; }
+        .pagination-controls .active { background: #ea580c; border-color: #ea580c; color: #fff; font-weight: 700; }
+        .pagination-controls .disabled { opacity: .55; cursor: not-allowed; }
         @media (max-width: 760px) {
             main { padding: 16px; }
             h1 { font-size: 26px; }
@@ -102,7 +122,30 @@
                 </table>
 
                 <div class="pagination">
-                    {{ $activityLogs->links() }}
+                    <div class="pagination-info">
+                        Menampilkan {{ $activityLogs->firstItem() }}-{{ $activityLogs->lastItem() }} dari {{ $activityLogs->total() }} aktivitas
+                    </div>
+                    <div class="pagination-controls">
+                        @if ($activityLogs->onFirstPage())
+                            <span class="disabled">Sebelumnya</span>
+                        @else
+                            <a href="{{ $activityLogs->previousPageUrl() }}">Sebelumnya</a>
+                        @endif
+
+                        @for ($page = 1; $page <= $activityLogs->lastPage(); $page++)
+                            @if ($page === $activityLogs->currentPage())
+                                <span class="active">{{ $page }}</span>
+                            @else
+                                <a href="{{ $activityLogs->url($page) }}">{{ $page }}</a>
+                            @endif
+                        @endfor
+
+                        @if ($activityLogs->hasMorePages())
+                            <a href="{{ $activityLogs->nextPageUrl() }}">Berikutnya</a>
+                        @else
+                            <span class="disabled">Berikutnya</span>
+                        @endif
+                    </div>
                 </div>
             @endif
         </section>
@@ -192,7 +235,30 @@
                 </table>
 
                 <div class="pagination">
-                    {{ $dataLogs->links() }}
+                    <div class="pagination-info">
+                        Menampilkan {{ $dataLogs->firstItem() }}-{{ $dataLogs->lastItem() }} dari {{ $dataLogs->total() }} perubahan
+                    </div>
+                    <div class="pagination-controls">
+                        @if ($dataLogs->onFirstPage())
+                            <span class="disabled">Sebelumnya</span>
+                        @else
+                            <a href="{{ $dataLogs->previousPageUrl() }}">Sebelumnya</a>
+                        @endif
+
+                        @for ($page = 1; $page <= $dataLogs->lastPage(); $page++)
+                            @if ($page === $dataLogs->currentPage())
+                                <span class="active">{{ $page }}</span>
+                            @else
+                                <a href="{{ $dataLogs->url($page) }}">{{ $page }}</a>
+                            @endif
+                        @endfor
+
+                        @if ($dataLogs->hasMorePages())
+                            <a href="{{ $dataLogs->nextPageUrl() }}">Berikutnya</a>
+                        @else
+                            <span class="disabled">Berikutnya</span>
+                        @endif
+                    </div>
                 </div>
             @endif
         </section>
